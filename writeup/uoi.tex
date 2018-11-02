@@ -1,0 +1,90 @@
+\documentclass[11pt]{article}
+
+% AMS Packages
+\usepackage{amsmath} 
+\usepackage{amssymb} 
+\usepackage{amsthm}
+% Page dimensions
+\usepackage[margin=1in]{geometry}
+% Images
+\usepackage[pdftex]{graphicx} 
+% Enumerate package
+\usepackage{enumitem} 
+\usepackage{array} 
+% Fancify pages
+\usepackage{fancyhdr} 
+% Convert captions on figures to bold font
+\usepackage[labelfont=bf,textfont=md]{caption}
+% Time New Roman font
+\usepackage{times}
+% change the line spacing
+\usepackage{setspace} 
+% SI Units in math type
+\usepackage{siunitx}
+% extra symbols
+\usepackage{textcomp} 
+\usepackage{wrapfig}
+% tikz 
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{bm}
+% Change sizes of sections
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\small\bfseries}{\thesubsubsection}{1em}{}
+% Declare useful math operators
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\plim}{plim}
+\DeclareMathOperator{\Tr}{Tr}
+\usepackage{float}
+
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\makeatletter
+\makeatother
+
+\newcommand{\varendash}[1][5pt]{%
+	\makebox[#1]{\leaders\hbox{--}\hfill\kern0pt}%
+}
+
+\pagestyle{fancy}
+\chead{\textbf{\small UoI Data}}
+\rhead{}
+\lhead{}
+\headsep 5pt
+
+
+\begin{document}
+\section{Retinal data}
+We present results from retinal data from the Meister lab. Mice retina were presented with flashing bars which allowed for the calculation of 1D spatio-temporal receptive fields. The receptive fields are shown in the first figure below:
+
+\begin{figure}[H]
+	\centering
+	\scalebox{0.30}{\includegraphics{img/retina_strfs.pdf}}
+	\caption{Spatio-temporal receptive fields after fitting with different methods.}
+\end{figure}
+
+While the UoI fit appears to be contain more non-zero parameters, in reality lasso is less selective:
+
+\begin{figure}[H]
+	\centering
+	\scalebox{0.45}{\includegraphics{img/retina_selection_ratio.pdf}}
+\end{figure}
+
+Meanwhile, UoI Lasso tends to be more predictive:
+
+\begin{figure}[H]
+	\centering
+	\scalebox{0.45}{\includegraphics{img/metrics.pdf}}
+\end{figure}
+
+and its sparser distribution of STRF parameters is apparent in histograms:
+
+\begin{figure}[H]
+	\centering
+	\scalebox{0.35}{\includegraphics{img/retina_histograms.pdf}}
+\end{figure}
+
+
+\end{document}

@@ -72,7 +72,6 @@ class Retina:
 
 		return cells
 
-
 	def get_n_frames_per_window(self, recording_idx, window_length=0.5):
 		'''Returns the number of frames in a specified recording and 
 		window size.
@@ -294,6 +293,118 @@ class Retina:
 
 		return stimuli
 
+	def calculate_strf_for_neurons_and_frame(self, 
+		method, recording_idx, frame, window_length=0.5, 
+		return_score=False, cells=None, **kwargs
+	):
+		'''Calculates STRF for specified neurons.
+
+		Parameters
+		----------
+		method : string
+			regression method to use when calculating STRFs
+
+		recording_idx : int
+			recording index to obtain design and response matrices
+
+		window_length : float
+			number of seconds to fit in STRF window
+
+		return_scores : bool
+			flag indicating whether to return explained variance over window.
+
+		cells : int, list, np.ndarray or None
+			the set of cell indices under consideration. if the first two, converts
+			to a np.ndarray. if None, creates a np array of all cells.
+
+		Returns
+		-------
+		strf : np.ndarray
+			n_cells x n_frames_per_window x n_features array describing the
+			spatio-temporal receptive field.
+
+		intercepts : np.ndarray
+			n_cells x n_frames_per_window array containing the intercepts for
+			the STRFs.
+
+		r2s : np.ndarray
+			returned only if requested; n_cells x n_frames_per_window array
+			containing the explained variance of the STRFfor each frame 
+			in the window.
+		'''
+		# set up array of cells to iterate over
+		cells = self.check_cells(cells=cells)
+
+		# extract design and response matrices
+		stimuli = self.get_stims_for_recording(
+			recording_idx=recording_idx,
+			window_length=window_length
+		)
+		responses = self.get_responses_for_recording(
+			recording_idx=recording_idx,
+			window_length=window_length,
+			cells=cells
+		)
+
+		# create object to perform fitting
+		if method == 'OLS':
+			fitter = LinearRegression()
+		elif method == 'Ridge':
+			fitter = RidgeCV(
+				cv=kwargs.get('cv', 5)
+			)
+		elif method == 'Lasso':
+			fitter = LassoCV(
+				normalize=kwargs.get('normalize', True),
+				cv=kwargs.get('cv', 5),
+				max_iter=kwargs.get('max_iter', 10000)
+			)
+		elif method == 'UoILasso':
+			fitter = UoI_Lasso(
+				normalize=kwargs.get('normalize', True),
+				estimation_score=kwargs.get('estimation_score', 'BIC'),
+				n_lambdas=kwargs.get('n_lambdas', 30),
+				n_boots_sel=kwargs.get('n_boots_sel', 30),
+				n_boots_est=kwargs.get('n_boots_est', 30),
+				selection_thres_min=kwargs.get('selection_thres_min', 1.0),
+			)
+		else:
+			raise ValueError('method %g is not available.' %method)
+
+		# extract dimensions and create storage
+		n_features, n_samples = stimuli.shape 
+		n_cells = cells.size
+		strf = np.zeros((n_cells, n_features))
+		intercept = np.zeros(n_cells)
+		r2 = np.zeros(n_cells)
+		bic = np.zeros(n_cells)
+
+		# iterate over cells
+		for cell_idx, cell in enumerate(cells):
+			# copy response matrix
+			responses = np.roll(responses, -frame, axis=0)
+
+			# perform fit
+			fitter.fit(stimuli.T, responses[:, cell_idx])
+			# extract coefficients
+			strf[cell_idx, :] = fitter.coef_.T
+			intercept[cell_idx] = fitter.intercept_
+
+			# scores
+			r2[cell_idx] = r2_score(
+				responses[:, cell_idx], 
+				fitter.intercept_ + np.dot(stimuli.T, fitter.coef_)
+			)
+
+		# get rid of potential unnecessary dimensions
+		strf = np.squeeze(strf)
+		r2 = np.squeeze(r2)
+
+		if return_score:
+			return strf, intercept, r2
+		else:
+			return strf, intercept
+
 	def calculate_strf_for_neurons(self, 
 		method, recording_idx, window_length=0.5, 
 		return_scores=False, cells=None, **kwargs
@@ -328,7 +439,7 @@ class Retina:
 			n_cells x n_frames_per_window array containing the intercepts for
 			the STRFs.
 
-		r2_scores : np.ndarray
+		r2s : np.ndarray
 			returned only if requested; n_cells x n_frames_per_window array
 			containing the explained variance of the STRFfor each frame 
 			in the window.
@@ -382,7 +493,10 @@ class Retina:
 		n_cells = cells.size
 		strf = np.zeros((n_cells, n_frames_per_window, n_features))
 		intercepts = np.zeros((n_cells, n_frames_per_window))
-		r2_scores = np.zeros((n_cells, n_frames_per_window))
+		# score storage
+		r2s = np.zeros((n_cells, n_frames_per_window))
+		aics = np.zeros((n_cells, n_frames_per_window))
+		bics = np.zeros((n_cells, n_frames_per_window))
 
 		# iterate over cells
 		for cell_idx, cell in enumerate(cells):
@@ -393,25 +507,79 @@ class Retina:
 			for frame in range(n_frames_per_window):
 				print(frame)
 				# perform fit
-				fitter.fit(stimuli.T, responses_copy[:, cell], verbose=True)
+				fitter.fit(stimuli.T, responses_copy[:, cell_idx])
 				# extract coefficients
 				strf[cell_idx, frame, :] = fitter.coef_.T
 				intercepts[cell_idx, frame] = fitter.intercept_
 
+				# scores
+				y_true = responses_copy[:, cell_idx]
+				y_pred = fitter.intercept_ + np.dot(stimuli.T, fitter.coef_)
+				n_features = np.count_nonzero(fitter.coef_) + 1
+
+				# explained variance
+				r2s[cell_idx, frame] = r2_score(
+					y_true=y_true,
+					y_pred=y_pred
+				)
+
+				# bics
+				bics[cell_idx, frame] = self.BIC(
+					y_true=y_true,
+					y_pred=y_pred,
+					n_features=n_features
+				)
+
+				# aics
+				aics[cell_idx, frame] = self.AIC(
+					y_true=y_true,
+					y_pred=y_pred,
+					n_features=n_features
+				)
+
 				# roll the window up
 				responses_copy = np.roll(responses_copy, -1, axis=0)
 
-				# scores
-				r2_scores[cell_idx, frame] = r2_score(
-					responses_copy[:, cell], 
-					fitter.intercept_ + np.dot(stimuli.T, fitter.coef_)
-				)
-
 		# get rid of potential unnecessary dimensions
 		strf = np.squeeze(strf)
-		r2_scores = np.squeeze(r2_scores)
+		r2s = np.squeeze(r2s)
+		bics = np.squeeze(bics)
+		aics = np.squeeze(aics)
 
 		if return_scores:
-			return strf, intercepts, r2_scores
+			return strf, intercepts, r2s, bics, aics
 		else:
 			return strf, intercepts
+
+	@staticmethod
+	def BIC(y_true, y_pred, n_features):
+		'''Calculate the Bayesian Information Criterion under the assumption of 
+		normally distributed disturbances (which allows the BIC to take on the
+		simple form below).
+		
+		Parameters
+		----------
+		Returns
+		-------
+		BIC : float
+			Bayesian Information Criterion
+		'''
+		n_samples = y_true.size
+		rss = np.sum((y_true - y_pred)**2)
+		BIC = n_samples * np.log(rss/n_samples) + n_features * np.log(n_samples)
+		return BIC
+
+	@staticmethod
+	def AIC(y_true, y_pred, n_features):
+		n_samples = y_true.size
+		rss = np.sum((y_true - y_pred)**2)
+		AIC = n_samples * np.log(rss/n_samples) + n_features * 2
+		return AIC
+
+	@staticmethod
+	def AICc(y_true, y_pred, n_features):
+		n_samples = y_true.size
+		rss = np.sum((y_true - y_pred)**2)
+		AICc = n_samples * np.log(rss/n_samples) + n_features * 2 \
+			+ 2 * (n_features**2 + n_features)/(n_samples - n_features - 1)
+		return AICc

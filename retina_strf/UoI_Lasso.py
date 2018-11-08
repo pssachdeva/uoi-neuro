@@ -266,6 +266,22 @@ class UoI_Lasso(lm.base.LinearModel, SparseCoefMixin):
 							y_pred=y_pred,
 							n_features=n_features
 						)
+					elif self.estimation_score == 'AIC':
+						y_pred = ols.predict(X_test)
+						n_features = np.count_nonzero(support)
+						scores[bootstrap, lamb_idx] = -utils.AIC(
+							y_true=y_test,
+							y_pred=y_pred,
+							n_features=n_features
+						)
+					elif self.estimation_score == 'AICc':
+						y_pred = ols.predict(X_test)
+						n_features = np.count_nonzero(support)
+						scores[bootstrap, lamb_idx] = -utils.AICc(
+							y_true=y_test,
+							y_pred=y_pred,
+							n_features=n_features
+						)
 					else:
 						raise ValueError(str(self.estimation_score) + ' is not a valid option.')
 				else:
@@ -277,6 +293,20 @@ class UoI_Lasso(lm.base.LinearModel, SparseCoefMixin):
 					elif self.estimation_score == 'BIC':
 						n_features = 0
 						scores[bootstrap, lamb_idx] = -utils.BIC(
+							y_true=y_test,
+							y_pred=np.zeros(y_test.size),
+							n_features=n_features
+						)
+					elif self.estimation_score == 'AIC':
+						n_features = 0
+						scores[bootstrap, lamb_idx] = -utils.AIC(
+							y_true=y_test,
+							y_pred=np.zeros(y_test.size),
+							n_features=n_features
+						)
+					elif self.estimation_score == 'AICc':
+						n_features = 0
+						scores[bootstrap, lamb_idx] = -utils.AICc(
 							y_true=y_test,
 							y_pred=np.zeros(y_test.size),
 							n_features=n_features
